@@ -7,14 +7,18 @@ import streamlit as st
 from pytube import YouTube
 import humanize
 
-# App Config
+# -------------------------------
+# STREAMLIT CONFIG
+# -------------------------------
 st.set_page_config(
     page_title="🎬 YouTube Advanced Downloader",
     page_icon="📥",
     layout="centered",
 )
 
-# Custom CSS for better UI
+# -------------------------------
+# CUSTOM CSS
+# -------------------------------
 st.markdown("""
     <style>
         .stApp {
@@ -37,18 +41,26 @@ st.markdown("""
             background: #00ffff;
             color: black;
         }
+        .stRadio > div {
+            flex-direction: row;
+        }
         .css-1d391kg p {
             color: white !important;
+        }
+        .api-box {
+            background-color: #0f3057;
+            padding: 10px;
+            border-radius: 10px;
+            margin-top: 10px;
         }
     </style>
 """, unsafe_allow_html=True)
 
-# ---- INTERNAL PYTUBE API ----
+# -------------------------------
+# INTERNAL PYTUBE API WRAPPER
+# -------------------------------
 def pytube_api(url: str):
-    """
-    Acts like a lightweight internal YouTube API using pytube.
-    Fetches metadata, available streams, and stats.
-    """
+    """Lightweight internal YouTube API using pytube."""
     try:
         yt = YouTube(url)
         data = {
@@ -82,7 +94,23 @@ def pytube_api(url: str):
         return {"error": str(e)}
 
 
-# ---- STREAMLIT UI ----
+# -------------------------------
+# SIMPLE REST API ENDPOINT (local)
+# -------------------------------
+# You can hit this from a browser or bot:
+# e.g. http://localhost:8501/api/video-info?url=https://youtube.com/watch?v=xxxx
+query_params = st.query_params
+if "api/video-info" in query_params.get("path", "") or st.query_params.get("api") == "video-info":
+    url = query_params.get("url", "")
+    if not url:
+        st.json({"error": "Missing YouTube URL parameter (?url=...)"})
+    else:
+        st.json(pytube_api(url))
+    st.stop()
+
+# -------------------------------
+# STREAMLIT UI
+# -------------------------------
 st.title("🎬 YouTube Advanced Downloader")
 st.markdown("**Download YouTube Videos or Audio in High Quality — Instantly!**")
 
@@ -94,22 +122,24 @@ if url:
     if "error" in api_data:
         st.error(f"❌ Error: {api_data['error']}")
     else:
-        # Show thumbnail preview
+        # Show video preview & info
         st.image(api_data["thumbnail"], use_container_width=True)
 
-        # Show video info
         st.subheader("📊 Video Information")
-        st.write(f"**🎬 Title:** {api_data['title']}")
-        st.write(f"**📺 Channel:** {api_data['author']}")
-        st.write(f"**👁 Views:** {humanize.intcomma(api_data['views'])}")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write(f"**🎬 Title:** {api_data['title']}")
+            st.write(f"**📺 Channel:** {api_data['author']}")
+        with col2:
+            st.write(f"**👁 Views:** {humanize.intcomma(api_data['views'])}")
+            st.write(f"**📅 Published:** {api_data['publish_date']}")
+
         st.write(f"**⏱ Duration:** {timedelta(seconds=api_data['length'])}")
-        st.write(f"**📅 Published:** {api_data['publish_date']}")
         st.markdown("---")
 
-        # Select mode
-        mode = st.radio("⚙️ Choose download type:", ["🎥 Video", "🎵 Audio Only"])
+        # Mode selection
+        mode = st.radio("⚙️ Choose download type:", ["🎥 Video", "🎵 Audio Only"], horizontal=True)
 
-        # Handle selection
         if mode == "🎥 Video":
             options = [
                 f"{s['resolution']} - {s['size']} MB"
@@ -125,7 +155,7 @@ if url:
             selected = st.selectbox("Select audio quality:", options)
             selected_stream = api_data["audio_streams"][options.index(selected)]
 
-        # Download button
+        # Download section
         if st.button("📥 Download Now"):
             try:
                 yt = YouTube(url)
@@ -142,15 +172,22 @@ if url:
 
                 st.success("✅ Download complete!")
                 st.download_button(
-                    label="⬇️ Click here to save file",
+                    label="⬇️ Click to save file",
                     data=buffer,
                     file_name=file_name,
-                    mime="video/mp4"
-                    if mode == "🎥 Video"
-                    else "audio/mp3",
+                    mime="video/mp4" if mode == "🎥 Video" else "audio/mp3",
                 )
             except Exception as e:
                 st.error(f"❌ Download failed: {e}")
+
+        # REST API info display
+        st.markdown("---")
+        st.markdown("### 🧠 Local API Endpoint")
+        st.markdown("You can fetch video info using this internal endpoint:")
+        st.code(
+            f"http://localhost:8501/api/video-info?url={url}",
+            language="bash",
+        )
 
 else:
     st.info("👆 Paste a YouTube URL to begin.")
